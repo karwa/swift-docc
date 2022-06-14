@@ -177,20 +177,30 @@ public struct NodeURLGenerator {
     /// We replace path unsafe characters when generating DocC references.
     /// When writing files on disk, however, and or hosting those files in a web environment
     /// there might be more complex rules for "safe" paths beyond simply replacing a set of
-    /// characters. For example a period is a safe character but when a file path component
-    /// starts with a period that might be problematic when hosted on a generic web server.
+    /// characters. This function encodes all path components as LDH (letters/digits/hyphen),
+    /// using a compact, readable Bootstring encoding.
     public static func fileSafeURL(_ url: URL) -> URL {
-        // Prepend leading period with a "'" to avoid file names looking like hidden files on web servers
         var isURLModified = false
         let pathComponents = url.pathComponents
             .filter({ $0 != "/" })
             .map({ name -> String in
                 var name = name
-                // Prepend leading period with a "'" to avoid file names looking like hidden files on web servers
-                if name.unicodeScalars.first == "." {
-                    isURLModified = true
-                    name = "'\(name)"
+
+                var bootstringEncoded = bootstring_encode(name)!
+                if name != bootstringEncoded {
+                  // Chop off the 'xn-' prefix; keep one '-'.
+                  // FIXME: I don't think this can collide with non-bootstring names, but 🤷‍♂️
+                  assert(bootstringEncoded.starts(with: "xn--"))
+                  bootstringEncoded.removeFirst(3)
+
+                  print("encoded", name, "as", bootstringEncoded)
+
+                  name = bootstringEncoded
+                  isURLModified = true
                 }
+
+                // We don't allow periods anywhere, but double-check anyway that we're not generating hidden files.
+                assert(name.unicodeScalars.first != ".")
                 
                 // Shorten path components that are too long.
                 // Take the first 240 chars and append a checksum on the *complete* string.
